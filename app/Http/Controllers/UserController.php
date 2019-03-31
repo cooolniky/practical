@@ -2,33 +2,27 @@
 
 namespace App\Http\Controllers;
 
-use Illuminate\Http\Request;
 use App\Http\Controllers\Controller;
-use App\Models\User;
-use App\Models\Role;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Http\Request;
+use App\Events\SendMail;
 use Validator;
 use Event;
 use Hash;
-use App\Events\SendMail;
+use User;
 use DB;
 
 class UserController extends Controller
 {
-
-    protected $user;
-    protected $role;
 
     /**
      * Create a new controller instance.
      *
      * @return void
      */
-    public function __construct(User $user, Role $role)
+    public function __construct()
     {
         $this->middleware(['auth', 'checkRole']);
-        $this->user = $user;
-        $this->role = $role;
     }
 
     /**
@@ -38,81 +32,18 @@ class UserController extends Controller
      */
     public function index()
     {
-
-        /**
-         * getCollection from App/Models/User
-         *
-         * @return mixed
-         */
-        $data['userData'] = $this->user->getCollection();
-        $data['roleData'] = $this->role->getCollection();
-        $data['masterManagementTab'] = "active open";
-        $data['userTab'] = "active";
-        return view('user.userlist', $data);
+        $viewData = User::view();
+        return view('user.userlist', $viewData);
     }
 
+    /**
+     * @param Request $request
+     * @return mixed
+     * @author Nikhil.Jain
+     */
     public function datatable(Request $request)
     {
-        // default count of user $userCount
-        $userCount = 0;
-
-        /**
-         * getDatatableCollection from App/Models/User
-         * get all users
-         *
-         * @return mixed
-         */
-        $userData = $this->user->getDatatableCollection();
-
-        /**
-         * scopeGetFilteredData from App/Models/User
-         * get filterred users
-         *
-         * @return mixed
-         */
-        $userData = $userData->GetFilteredData($request);
-
-        /**
-         * getUserCount from App/Models/User
-         * get count of users
-         *
-         * @return integer
-         */
-        $userCount = $this->user->getUserCount($userData);
-
-        // Sorting user data base on requested sort order
-        if (isset(config('constant.userDataTableFieldArray')[$request->order['0']['column']])) {
-            $userData = $userData->SortUserData($request);
-        } else {
-            $userData = $userData->SortDefaultDataByRaw('users.id', 'desc');
-        }
-
-        /**
-         * get paginated collection of user
-         *
-         * @param  \Illuminate\Http\Request $request
-         * @return mixed
-         */
-        $userData = $userData->GetUserData($request);
-
-        $appData = array();
-        foreach ($userData as $userData) {
-            $row = array();
-            $row[] = $userData->first_name;
-            $row[] = $userData->last_name;
-            $row[] = ($userData->Role) ? $userData->Role->code : "---";
-            $row[] = $userData->email;
-            $row[] = view('datatable.switch', ['module' => "user",'status' => $userData->status, 'id' => $userData->id])->render();
-            $row[] = view('datatable.action', ['module' => "user",'type' => $userData->role_id, 'id' => $userData->id])->render();
-            $appData[] = $row;
-        }
-
-        return [
-            'draw' => $request->draw,
-            'recordsTotal' => $userCount,
-            'recordsFiltered' => $userCount,
-            'data' => $appData,
-        ];
+        return User::getDataTable($request);
     }
 
     /**
@@ -122,11 +53,8 @@ class UserController extends Controller
      */
     public function create()
     {
-        $data['masterManagementTab'] = "active open";
-        $data['userTab'] = "active";
-        $data['userData'] = $this->user->getCollection();
-        $data['roleData'] = $this->role->getCollection();
-        return view('user.add', $data);
+        $formData = User::create();
+        return view('user.add', $formData);
     }
 
     /**
@@ -137,20 +65,8 @@ class UserController extends Controller
      */
     public function edit($id)
     {
-
-        /**
-         * get details of the specified user. from App/Models/User
-         *
-         * @param mixed $id
-         * @param string (id) fieldname
-         * @return mixed
-         */
-        $data['details'] = $this->user->getUserByField($id, 'id');
-        $data['userData'] = $this->user->getCollection();
-        $data['roleData'] = $this->role->getCollection();
-        $data['masterManagementTab'] = "active open";
-        $data['userTab'] = "active";
-        return view('user.edit', $data);
+        $editFormData = User::edit($id);
+        return view('user.edit', $editFormData);
     }
 
     /**
@@ -160,16 +76,8 @@ class UserController extends Controller
      */
     public function profile()
     {
-        /**
-         * get details of the specified user. from App/Models/User
-         *
-         * @param mixed $id
-         * @param string (id) fieldname
-         * @return mixed
-         */
-        $data['profileTab'] = "active";
-        $data['details'] = $this->user->getUserByField(Auth::user()->id, 'id');
-        return view('user.profile', $data);
+        $profileData = User::profile(Auth::user()->id, 'id');
+        return view('user.profile', $profileData);
     }
 
     /**
@@ -223,7 +131,7 @@ class UserController extends Controller
         // Start Communicate with database
         DB::beginTransaction();
         try{
-            $adduser = $this->user->addUser($request->all());
+            $adduser = User::insertAndUpdateUser($request->all());
             DB::commit();
         } catch (\Exception $e) {
             //exception handling
@@ -259,7 +167,7 @@ class UserController extends Controller
         // Start Communicate with database
         DB::beginTransaction();
         try{
-            $adduser = $this->user->addUser($request->all());
+            $updateuser = User::insertAndUpdateUser($request->all());
             DB::commit();
         } catch (\Exception $e) {
             //exception handling
@@ -270,7 +178,7 @@ class UserController extends Controller
 
         }
 
-        if ($adduser) {
+        if ($updateuser) {
 
             //  if change_redirect_state  exists then user redirect to user profile
             if(!empty($request->change_redirect_state) && $request->change_redirect_state == 1){
@@ -293,7 +201,16 @@ class UserController extends Controller
      */
     public function changeStatus(request $request)
     {
-        $updateUser = $this->user->updateStatus($request->all());
+        // Start Communicate with database
+        DB::beginTransaction();
+        try{
+            $updateUser = User::updateStatus($request->all());
+            DB::commit();
+        } catch (\Exception $e) {
+            //exception handling
+            DB::rollback();
+        }
+
         if ($updateUser) {
             $request->session()->flash('alert-success', __('app.default_status_success',["module" => __('app.user')]));
         } else {
@@ -311,7 +228,7 @@ class UserController extends Controller
      */
     public function delete(request $request)
     {
-        $deleteUser = $this->user->deleteUser($request->id);
+        $deleteUser = User::deleteUser($request->id);
         if ($deleteUser) {
             $request->session()->flash('alert-success', __('app.default_delete_success',["module" => __('app.user')]));
         } else {
@@ -358,7 +275,7 @@ class UserController extends Controller
             // Start Communicate with database
             DB::beginTransaction();
             try{
-                $updateUser = $this->user->updateChangePassword($request->all());
+                $updateUser = User::updateChangePassword($request->all());
                 DB::commit();
             } catch (\Exception $e) {
                 //exception handling
