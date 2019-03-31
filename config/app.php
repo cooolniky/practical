@@ -12,7 +12,7 @@ return [
     | any other location as required by the application or its packages.
     */
 
-    'name' => 'IMS One World',
+    'name' => 'Default',
 
     /*
     |--------------------------------------------------------------------------
@@ -179,7 +179,7 @@ return [
         App\Providers\RouteServiceProvider::class,
         App\Providers\ApiRepositoryProvider::class,
         App\Providers\RepositoryFacadeProvider::class,
-        
+
     ],
 
     /*
