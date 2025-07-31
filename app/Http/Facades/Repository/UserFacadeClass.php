@@ -122,6 +122,7 @@ class UserFacadeClass
     public function profile($id,$field)
     {
         $data['profileTab'] = "active";
+        $data['masterManagementTab'] = "active open";
         $data['details'] = $this->user->getUserByField($id,$field);
         return $data;
     }

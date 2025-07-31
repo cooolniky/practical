@@ -245,6 +245,7 @@ class UserController extends Controller
     public function changePassword()
     {
         $data['changePasswordTab'] = "active";
+        $data['masterManagementTab'] = "active open";
         return view('user.change_password', $data);
     }
 
